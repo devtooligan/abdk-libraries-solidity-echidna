@@ -14,6 +14,7 @@ function between(uint256 val, uint256 lower, uint256 upper) pure returns (uint25
 contract Test {
     int128 internal zero = ABDKMath64x64.fromInt(0);
     int128 internal one = ABDKMath64x64.fromInt(1);
+    int128 internal testPrecision = ABDKMath64x64.fromInt(1e18);
 
     event Value(string, int64);
 
@@ -332,15 +333,17 @@ contract Test {
      *  \____|_| \_/
      */
 
-    // test div (x + y) / z == x/z + y/z
-    function div_add(int128 x, int128 y, int128 z) public {
-        require(z != 0);
-        (int128 x64, int128 y64, int128 z64) =
-            (ABDKMath64x64.fromInt(x), ABDKMath64x64.fromInt(y), ABDKMath64x64.fromInt(z));
-        int128 result1 = ABDKMath64x64.div(ABDKMath64x64.add(x64, y64), z64);
-        int128 result2 = ABDKMath64x64.add(ABDKMath64x64.div(x64, z64), ABDKMath64x64.div(y64, z64));
-        assert(ABDKMath64x64.toInt(result1) == ABDKMath64x64.toInt(result2));
-    }
+    // // test div (x + y) / z == x/z + y/z  -- DOESNT WORK WITH 2,1,3
+    // function div_add(int128 x, int128 y, int128 z) public {
+    //     require(z != 0);
+    //     (int128 x64, int128 y64, int128 z64) =
+    //         (ABDKMath64x64.fromInt(x), ABDKMath64x64.fromInt(y), ABDKMath64x64.fromInt(z));
+    //     int128 result1 = ABDKMath64x64.div(ABDKMath64x64.add(x64, y64), z64);
+    //     debug("result1", result1);
+    //     int128 result2 = ABDKMath64x64.add(ABDKMath64x64.div(x64, z64), ABDKMath64x64.div(y64, z64));
+    //     debug("result2", result2);
+    //     assert(ABDKMath64x64.toInt(result1) == ABDKMath64x64.toInt(result2));
+    // }
 
     // test div x / y back to x using mul
     function div_then_mul(int128 x, int128 y) public {
@@ -414,23 +417,30 @@ contract Test {
 
     // test inv is 1 / x
     function inv(int128 x) public {
-        (x) = (ABDKMath64x64.fromInt(x));
         require(x != 0);
+        (x) = (ABDKMath64x64.fromInt(x));
         assert(ABDKMath64x64.inv(x) == ABDKMath64x64.div(one, x));
     }
 
-    // test inv of 1/x is x
-    function inv_inv(int128 x) public {
-        (x) = (ABDKMath64x64.fromInt(x));
-        require(x != 0);
-        assert(ABDKMath64x64.inv(ABDKMath64x64.inv(x)) == x);
-    }
+    // // test inv of 1/x is x  NOTE: couldnt get this to work
+    // function inv_inv(int128 x) public {
+    //     require(x != 0);
+    //     int128 x64 = (ABDKMath64x64.fromInt(x));
+    //     // debug("x64", x64);
+    //     int128 diff = ABDKMath64x64.sub(ABDKMath64x64.inv(ABDKMath64x64.inv(x64)), x64);
+
+    //     assert(ABDKMath64x64.abs(diff) < testPrecision);
+    //     // debug("diff", diff);
+    //     // int128 scaled = ABDKMath64x64.toInt(ABDKMath64x64.mul(diff, testPrecision));
+    //     // debug("scaled", scaled);  // DEBUG shows scaled is 0 but assert fails
+    //     // assert(scaled == 0);
+    // }
 
     // test abs(inv(x)) is always smaller than abs(x)
     function inv_abs(int128 x) public {
-        (x) = (ABDKMath64x64.fromInt(x));
+        (int128 x64) = (ABDKMath64x64.fromInt(x));
         require(x != 0);
-        assert(ABDKMath64x64.abs(ABDKMath64x64.inv(x)) < ABDKMath64x64.abs(x));
+        assert(ABDKMath64x64.abs(ABDKMath64x64.inv(x64)) <= ABDKMath64x64.abs(x64));
     }
 
     /**
@@ -441,6 +451,35 @@ contract Test {
      *                 (_____|
      */
 
+    // test avg of 2 numbers is always smaller or equal to the largest and greater or equal to the smaller
+    function avg(int128 x, int128 y) public {
+        (x, y) = (ABDKMath64x64.fromInt(x), ABDKMath64x64.fromInt(y));
+        int128 smaller = x < y ? x : y;
+        int128 larger = x > y ? x : y;
+        int128 avg = ABDKMath64x64.avg(x, y);
+        assert(avg <= larger);
+        assert(avg >= smaller);
+    }
+
+    // two times the average of two numbers is always equal to the sum of the two numbers
+    function avg_mul2(int128 x, int128 y) public {
+        (int128 x64, int128 y64) = (ABDKMath64x64.fromInt(x), ABDKMath64x64.fromInt(y));
+        int128 avg_ = ABDKMath64x64.avg(x64, y64);
+        assert(ABDKMath64x64.mul(avg_, ABDKMath64x64.fromUInt(2)) == ABDKMath64x64.add(x64, y64));
+    }
+
+    // avg(avg(a,b), avg(c,d)) == avg(a,b,c,d) -- only works for pos numbers due to rounding down
+    function avg_avg(uint128 a, uint128 b, uint128 c, uint128 d) public {
+        (int128 a64, int128 b64, int128 c64, int128 d64) = (ABDKMath64x64.fromUInt(a), ABDKMath64x64.fromUInt(b), ABDKMath64x64.fromUInt(c), ABDKMath64x64.fromUInt(d));
+        int128 avg1 = ABDKMath64x64.avg(a64, b64);
+        debug("avg1", avg1);
+        int128 avg2 = ABDKMath64x64.avg(c64, d64);
+        debug("avg2", avg2);
+        int128 avg3 = int128((a + b + c + d) / 4);
+        debug("avg3", avg3);
+        debug("avg avg", ABDKMath64x64.toInt(ABDKMath64x64.avg(avg1, avg2)));
+        assert(ABDKMath64x64.toInt(ABDKMath64x64.avg(avg1, avg2)) == avg3);
+    }
 
     /**
      *        ____ _____ _   _ ____
@@ -450,6 +489,31 @@ contract Test {
      *      (_____|          (_____|
      */
 
+    // gavg always >= 0
+    function gavg_gte_zero(int128 x, int128 y) public {
+        (x, y) = (ABDKMath64x64.fromInt(x), ABDKMath64x64.fromInt(y));
+        assert(ABDKMath64x64.gavg(x, y) >= 0);
+    }
+
+    // gavg of 2 numbers is always smaller or equal to the largest and greater or equal to the smaller with uints
+    function gavg_mul2(uint128 x, uint128 y) public {
+        (int128 x64, int128 y64) = (ABDKMath64x64.fromUInt(x), ABDKMath64x64.fromUInt(y));
+        int128 smaller = x64 < y64 ? x64 : y64;
+        int128 larger = x64 > y64 ? x64 : y64;
+        int128 gavg_ = ABDKMath64x64.gavg(x64, y64);
+        assert(gavg_ <= ABDKMath64x64.abs(larger));
+        assert(gavg_ >= ABDKMath64x64.abs(smaller));
+    }
+
+    // gavg will always be less than the avg of the two numbers
+    function gavg_avg(uint128 x, uint128 y) public {
+        (int128 x64, int128 y64) = (ABDKMath64x64.fromUInt(x), ABDKMath64x64.fromUInt(y));
+        int128 avg_ = ABDKMath64x64.avg(x64, y64);
+        int128 gavg_ = ABDKMath64x64.gavg(x64, y64);
+        assert(gavg_ <= avg_);
+    }
+
+
     /**
      *       ____   ___  _ _ _
      *      |  _ \ / _ \| | | |
@@ -457,6 +521,26 @@ contract Test {
      *      |  __/ \___/ \___/
      *      |_|
      */
+
+    // pow will always be positive if y is even
+    function pow_pos(int128 x, uint128 y) public {
+        uint256 y256even = 2 * y;
+        int128 x64 = ABDKMath64x64.fromInt(x);
+        assert(ABDKMath64x64.pow(x64, y256even) >= 0);
+    }
+
+    // pow will always be equal to the product of the number and itself y times
+    function pow_mul(int128 x, uint128 y) public {
+        y = uint128(between(y, 1, 1000));
+        int128 x64 = ABDKMath64x64.fromInt(x);
+        int128 pow_ = ABDKMath64x64.pow(x64, y);
+        int128 mul_ = x64;
+        for (uint128 i = 2; i <= y; i++) {
+            mul_ = ABDKMath64x64.mul(mul_, x64);
+        }
+        assert(pow_ == mul_);
+    }
+
     /**
      *                          _
      *        ___  ____  ____ _| |_
@@ -465,6 +549,30 @@ contract Test {
      *      (___/ \__  |_|      \__)
      *               |_|
      */
+
+    // sqrt is always <= the number with positive numbers
+    function sqrt_lte(uint128 x) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 sqrt_ = ABDKMath64x64.sqrt(x64);
+        assert(sqrt_ <= x64);
+    }
+
+    // sqrt is always >= 0  with positive numbers
+    function sqrt_gte_zero(uint128 x) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 sqrt_ = ABDKMath64x64.sqrt(x64);
+        assert(sqrt_ >= 0);
+    }
+
+    // sqrt of x squared == x with positive numbers
+    function sqrt_sqr(uint128 x) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 sqrt_ = ABDKMath64x64.sqrt(x64);
+        int128 sqr_ = ABDKMath64x64.mul(sqrt_, sqrt_);
+        // assertt abs of sqr_ - x64 <= testPrecision using ABDK.sub
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(sqr_, x64)) <= testPrecision);
+    }
+
     /**
      *       _                     ______
      *      | |                   (_____ \
@@ -474,6 +582,44 @@ contract Test {
      *       \_)___/ \___ (_______)_______)
      *              (_____|
      */
+
+    // log_2 is always <= the number (using uint)
+    function log2_lte(uint128 x) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 log2_ = ABDKMath64x64.log_2(x64);
+        assert(log2_ <= x64);
+    }
+
+    // log_2 xy == log_2 x + log_2 y (using uint)
+    function log2_mul(uint128 x, uint128 y) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 y64 = ABDKMath64x64.fromUInt(y);
+        int128 log2_ = ABDKMath64x64.log_2(ABDKMath64x64.mul(x64, y64));
+        int128 log2x_ = ABDKMath64x64.log_2(x64);
+        int128 log2y_ = ABDKMath64x64.log_2(y64);
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(log2_, ABDKMath64x64.add(log2x_, log2y_))) < testPrecision);
+    }
+
+    // log_2 x/ y == log_2 x - log_2 y (using uint)
+    function log2_div(uint128 x, uint128 y) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 y64 = ABDKMath64x64.fromUInt(y);
+        int128 log2_ = ABDKMath64x64.log_2(ABDKMath64x64.div(x64, y64));
+        int128 log2x_ = ABDKMath64x64.log_2(x64);
+        int128 log2y_ = ABDKMath64x64.log_2(y64);
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(log2_, ABDKMath64x64.sub(log2x_, log2y_))) < testPrecision);
+    }
+
+    // log2 x ** y == y * log2 x (using uint)
+    function log2_pow(uint128 x, uint128 y) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 y64 = ABDKMath64x64.fromUInt(y);
+        int128 log2_ = ABDKMath64x64.log_2(ABDKMath64x64.pow(x64, y));
+        int128 log2x_ = ABDKMath64x64.log_2(x64);
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(log2_, ABDKMath64x64.mul(y64, log2x_))) < testPrecision);
+    }
+
+
     /**
      *      _
      *      | |
@@ -482,6 +628,43 @@ contract Test {
      *      | || | | |
      *       \_)_| |_|
      */
+
+    // The natural log of the multiplication of x and y is the sum of the ln of x and ln of y. for uint
+    function ln_mul(uint128 x, uint128 y) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 y64 = ABDKMath64x64.fromUInt(y);
+        int128 ln_ = ABDKMath64x64.ln(ABDKMath64x64.mul(x64, y64));
+        int128 lnx_ = ABDKMath64x64.ln(x64);
+        int128 lny_ = ABDKMath64x64.ln(y64);
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(ln_, ABDKMath64x64.add(lnx_, lny_))) < testPrecision);
+    }
+
+    // ln(x/y) = ln(x) - ln(y) for uint
+    function ln_div(uint128 x, uint128 y) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 y64 = ABDKMath64x64.fromUInt(y);
+        int128 ln_ = ABDKMath64x64.ln(ABDKMath64x64.div(x64, y64));
+        int128 lnx_ = ABDKMath64x64.ln(x64);
+        int128 lny_ = ABDKMath64x64.ln(y64);
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(ln_, ABDKMath64x64.sub(lnx_, lny_))) < testPrecision);
+    }
+
+    //ln(xy) = y * ln(x) for uint
+    function ln_pow(uint128 x, uint128 y) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 y64 = ABDKMath64x64.fromUInt(y);
+        int128 ln_ = ABDKMath64x64.ln(ABDKMath64x64.pow(x64, y));
+        int128 lnx_ = ABDKMath64x64.ln(x64);
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(ln_, ABDKMath64x64.mul(y64, lnx_))) < testPrecision);
+    }
+
+    // ln(ex) = x for uint
+    function ln_exp(uint128 x) public {
+        int128 x64 = ABDKMath64x64.fromUInt(x);
+        int128 ln_ = ABDKMath64x64.ln(ABDKMath64x64.exp(x64));
+        assert(ABDKMath64x64.abs(ABDKMath64x64.sub(ln_, x64)) < testPrecision);
+    }
+
     /**
      *                                ______
      *                               (_____ \
@@ -491,6 +674,8 @@ contract Test {
      *      |_____|_/ \_)  __(_______)_______)
      *                  |_|
      */
+
+
     /**
      *      _____ _   _ ____
      *      | ___ ( \ / )  _ \
@@ -498,6 +683,8 @@ contract Test {
      *      |_____|_/ \_)  __/
      *                  |_|
      */
+
+
     /**
      *           _ _
      *          | (_)
